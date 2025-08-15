@@ -18,6 +18,11 @@ interface Agendamento {
   observacao: string;
 }
 
+interface OcupacaoDTO {
+  ocupacao: number;
+  total: number;
+}
+
 function decodeJWT(token: string) {
   try {
     const payload = token.split(".")[1];
@@ -44,49 +49,48 @@ export default function DashboardPage() {
   const [quantidadePallets, setQuantidadePallets] = useState("");
   const [observacao, setObservacao] = useState("");
 
+  
+  const [filtroInicio, setFiltroInicio] = useState("");
+  const [filtroFim, setFiltroFim] = useState("");
+  const [filtroDia, setFiltroDia] = useState("");
+  const [filtroFaixa, setFiltroFaixa] = useState("1");
+
   const token = Cookies.get("token");
 
+  
   const carregarAgendamentos = () => {
-    if (token) {
-      fetch(`${API_URL}/agendamentos`, {
-        headers: { "Authorization": `Bearer ${token}` }
+    if (!token) return;
+    fetch(`${API_URL}/agendamentos`, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+      .then(res => {
+        if (!res.ok) throw new Error("Erro ao carregar agendamentos");
+        return res.json();
       })
-        .then(res => {
-          if (!res.ok) throw new Error("Erro ao carregar agendamentos");
-          return res.json();
-        })
-        .then(data => setAgendamentos(data))
-        .catch(err => console.error(err));
-    }
+      .then(data => setAgendamentos(data))
+      .catch(err => console.error(err));
   };
 
   useEffect(() => {
     if (token) {
       const payload = decodeJWT(token);
       console.log("Payload JWT:", payload);
-
-      
-      if (payload?.role && payload.role === "ROLE_ADMIN") {
-        setIsAdmin(true);
-      }
-      if (Array.isArray(payload?.roles) && payload.roles.includes("ROLE_ADMIN")) {
-        setIsAdmin(true);
-      }
-      if (Array.isArray(payload?.authorities) && payload.authorities.includes("ROLE_ADMIN")) {
-        setIsAdmin(true);
-      }
+      const role = payload?.role;
+      if (role === "ROLE_ADMIN") setIsAdmin(true);
     }
     carregarAgendamentos();
   }, [token]);
 
+  
   const handleCriar = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!token) return;
     try {
       const res = await fetch(`${API_URL}/agendamentos`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
+          Authorization: `Bearer ${token}`
         },
         body: JSON.stringify({
           data,
@@ -100,31 +104,75 @@ export default function DashboardPage() {
           observacao
         })
       });
-
       if (!res.ok) throw new Error("Erro ao criar agendamento");
       alert("Agendamento criado com sucesso!");
       setData(""); setFaixaHorariaId("1"); setIdPedido("");
       setFornecedor(""); setEmailFornecedor(""); setTipoCaminhaoId("1");
       setTipoPaletizacaoId("1"); setQuantidadePallets(""); setObservacao("");
       carregarAgendamentos();
-    } catch (error) {
-      console.error(error);
+    } catch (err) {
+      console.error(err);
       alert("Erro ao criar agendamento");
     }
   };
 
+  
   const handleDelete = async (id: number) => {
     if (!confirm("Tem certeza que deseja excluir?")) return;
+    if (!token) return;
     try {
       const res = await fetch(`${API_URL}/agendamentos/${id}`, {
         method: "DELETE",
-        headers: { "Authorization": `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${token}` }
       });
       if (!res.ok) throw new Error("Erro ao excluir agendamento");
       carregarAgendamentos();
     } catch (err) {
       console.error(err);
       alert("Erro ao excluir");
+    }
+  };
+
+ 
+  const filtrarPorPeriodo = async () => {
+    if (!token || !filtroInicio || !filtroFim) return;
+    try {
+      const res = await fetch(`${API_URL}/agendamentos/periodo?inicio=${filtroInicio}&fim=${filtroFim}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error("Erro ao filtrar por período");
+      const data = await res.json();
+      setAgendamentos(data);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const obterOcupacaoDia = async () => {
+    if (!token || !filtroDia) return;
+    try {
+      const res = await fetch(`${API_URL}/agendamentos/ocupacao/dia?data=${filtroDia}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error("Erro ao obter ocupação do dia");
+      const data: OcupacaoDTO = await res.json();
+      alert(`Ocupação do dia: ${data.ocupacao}/${data.total}`);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const obterOcupacaoFaixa = async () => {
+    if (!token || !filtroDia) return;
+    try {
+      const res = await fetch(`${API_URL}/agendamentos/ocupacao/faixa?data=${filtroDia}&faixaId=${filtroFaixa}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error("Erro ao obter ocupação da faixa horária");
+      const data: OcupacaoDTO = await res.json();
+      alert(`Ocupação faixa: ${data.ocupacao}/${data.total}`);
+    } catch (err) {
+      console.error(err);
     }
   };
 
@@ -140,41 +188,57 @@ export default function DashboardPage() {
         <button onClick={handleLogout} className="bg-red-600 text-white px-4 py-2 rounded">Logout</button>
       </div>
 
+     
+      <div className="mb-6 bg-gray-100 p-4 rounded">
+        <h2 className="font-semibold mb-2">Filtros</h2>
+        <div className="flex gap-2 mb-2">
+          <input type="date" value={filtroInicio} onChange={e => setFiltroInicio(e.target.value)} className="p-2 border rounded" />
+          <input type="date" value={filtroFim} onChange={e => setFiltroFim(e.target.value)} className="p-2 border rounded" />
+          <button onClick={filtrarPorPeriodo} className="bg-blue-600 text-white px-4 py-2 rounded">Filtrar por Período</button>
+        </div>
+        <div className="flex gap-2 mb-2">
+          <input type="date" value={filtroDia} onChange={e => setFiltroDia(e.target.value)} className="p-2 border rounded" />
+          <button onClick={obterOcupacaoDia} className="bg-green-600 text-white px-4 py-2 rounded">Ocupação do Dia</button>
+          <select value={filtroFaixa} onChange={e => setFiltroFaixa(e.target.value)} className="p-2 border rounded">
+            <option value="1">08:00 - 10:00</option>
+            <option value="2">10:00 - 12:00</option>
+            <option value="3">13:00 - 15:00</option>
+            <option value="4">15:00 - 17:00</option>
+          </select>
+          <button onClick={obterOcupacaoFaixa} className="bg-purple-600 text-white px-4 py-2 rounded">Ocupação Faixa</button>
+        </div>
+      </div>
+
+    
       {isAdmin && (
         <form onSubmit={handleCriar} className="bg-white p-6 rounded shadow-md mb-6 max-w-lg space-y-2">
           <h2 className="text-xl font-semibold mb-4">Novo Agendamento</h2>
-
           <input type="date" value={data} onChange={e => setData(e.target.value)} className="w-full p-2 border rounded" required />
-          
           <select value={faixaHorariaId} onChange={e => setFaixaHorariaId(e.target.value)} className="w-full p-2 border rounded" required>
             <option value="1">08:00 - 10:00</option>
             <option value="2">10:00 - 12:00</option>
             <option value="3">13:00 - 15:00</option>
             <option value="4">15:00 - 17:00</option>
           </select>
-
           <input type="number" placeholder="Pedido ID" value={idPedido} onChange={e => setIdPedido(e.target.value)} className="w-full p-2 border rounded" required />
           <input type="text" placeholder="Fornecedor" value={fornecedor} onChange={e => setFornecedor(e.target.value)} className="w-full p-2 border rounded" required />
           <input type="email" placeholder="Email Fornecedor" value={emailFornecedor} onChange={e => setEmailFornecedor(e.target.value)} className="w-full p-2 border rounded" required />
-
           <select value={tipoCaminhaoId} onChange={e => setTipoCaminhaoId(e.target.value)} className="w-full p-2 border rounded" required>
             <option value="1">Caminhão Pequeno</option>
             <option value="2">Caminhão Médio</option>
             <option value="3">Caminhão Grande</option>
           </select>
-
           <select value={tipoPaletizacaoId} onChange={e => setTipoPaletizacaoId(e.target.value)} className="w-full p-2 border rounded" required>
             <option value="1">Paletizado</option>
             <option value="2">Não Paletizado</option>
           </select>
-
           <input type="number" placeholder="Quantidade Pallets" value={quantidadePallets} onChange={e => setQuantidadePallets(e.target.value)} className="w-full p-2 border rounded" required />
           <textarea placeholder="Observação" value={observacao} onChange={e => setObservacao(e.target.value)} className="w-full p-2 border rounded" required />
-
           <button type="submit" className="bg-green-600 text-white px-4 py-2 rounded w-full">Criar Agendamento</button>
         </form>
       )}
 
+      
       {agendamentos.length === 0 ? (
         <p>Nenhum agendamento encontrado</p>
       ) : (
@@ -209,12 +273,7 @@ export default function DashboardPage() {
                 <td className="border p-2">{a.observacao}</td>
                 {isAdmin && (
                   <td className="border p-2">
-                    <button 
-                      onClick={() => handleDelete(a.id)}
-                      className="bg-red-500 text-white px-2 py-1 rounded"
-                    >
-                      Excluir
-                    </button>
+                    <button onClick={() => handleDelete(a.id)} className="bg-red-500 text-white px-2 py-1 rounded">Excluir</button>
                   </td>
                 )}
               </tr>
